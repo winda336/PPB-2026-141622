@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "694295712035",
+    "project_id": "campus-lost-and-found-9260f",
+    "storage_bucket": "campus-lost-and-found-9260f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:694295712035:android:d92dda977498d3b7603c96",
+        "android_client_info": {
+          "package_name": "com.example.campus_lost_found"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCbFDJcGqZvBzQm6zrvM_q5uWPJi6BhMlY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
