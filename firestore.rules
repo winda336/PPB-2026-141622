@@ -1,0 +1,392 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==============================
+    // HELPER: AUTHENTICATION & ROLE
+    // ==============================
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasProfile() {
+      return signedIn() && exists(userPath());
+    }
+
+    function isPengguna() {
+      return hasProfile()
+        && get(userPath()).data.role == 'pengguna';
+    }
+
+    function satpamFor(posId) {
+      return hasProfile()
+        && get(userPath()).data.role == 'satpam'
+        && get(userPath()).data.get('idPos', '') == posId;
+    }
+
+    // ==============================
+    // HELPER: VALIDASI DATA ITEM
+    // ==============================
+
+    function validItemFields() {
+      return request.resource.data.keys().hasAll([
+          'tipe',
+          'nama',
+          'kategori',
+          'fakultas',
+          'tanggalKejadian',
+          'catatanTambahan',
+          'fotoUrl',
+          'status',
+          'idPelapor',
+          'namaPelapor',
+          'createdAt',
+          'diperbaruiPada'
+        ])
+
+        && request.resource.data.nama is string
+        && request.resource.data.nama.size() >= 2
+        && request.resource.data.nama.size() <= 120
+
+        && request.resource.data.kategori is string
+        && request.resource.data.kategori.size() >= 1
+        && request.resource.data.kategori.size() <= 80
+
+        && request.resource.data.fakultas is string
+        && request.resource.data.fakultas.size() >= 1
+        && request.resource.data.fakultas.size() <= 80
+
+        && request.resource.data.tanggalKejadian
+            is timestamp
+        && request.resource.data.tanggalKejadian
+            <= request.time
+
+        && request.resource.data.catatanTambahan
+            is string
+        && request.resource.data.catatanTambahan.size()
+            <= 1000
+
+        && request.resource.data.fotoUrl is string
+        && request.resource.data.fotoUrl.size() <= 2048
+        && (
+          request.resource.data.fotoUrl == ''
+          || request.resource.data.fotoUrl.matches(
+            'https://.*'
+          )
+        )
+
+        && request.resource.data.idPelapor is string
+
+        && request.resource.data.namaPelapor is string
+        && request.resource.data.namaPelapor.size() >= 2
+        && request.resource.data.namaPelapor.size() <= 120;
+    }
+
+    // ==============================
+    // CREATE LAPORAN BARU
+    // ==============================
+
+    function validNewItem() {
+      return isPengguna()
+
+        && validItemFields()
+
+        && request.resource.data.idPelapor
+            == request.auth.uid
+
+        && request.resource.data.namaPelapor
+            == get(userPath()).data.nama
+
+        && request.resource.data.createdAt
+            == request.time
+
+        && request.resource.data.diperbaruiPada
+            == request.time
+
+        && request.resource.data.status == 'aktif'
+
+        && (
+          // Laporan hilang: tanpa idPos/namaPos.
+          (
+            request.resource.data.tipe == 'hilang'
+
+            && request.resource.data.keys().hasOnly([
+              'tipe',
+              'nama',
+              'kategori',
+              'fakultas',
+              'tanggalKejadian',
+              'catatanTambahan',
+              'fotoUrl',
+              'status',
+              'idPelapor',
+              'namaPelapor',
+              'createdAt',
+              'diperbaruiPada'
+            ])
+          )
+
+          ||
+
+          // Laporan ditemukan: wajib pos valid.
+          (
+            request.resource.data.tipe == 'ditemukan'
+
+            && request.resource.data.keys().hasOnly([
+              'tipe',
+              'nama',
+              'kategori',
+              'fakultas',
+              'tanggalKejadian',
+              'catatanTambahan',
+              'fotoUrl',
+              'status',
+              'idPelapor',
+              'namaPelapor',
+              'createdAt',
+              'diperbaruiPada',
+              'idPos',
+              'namaPos'
+            ])
+
+            && request.resource.data.keys().hasAll([
+              'idPos',
+              'namaPos'
+            ])
+
+            && request.resource.data.idPos is string
+
+            && request.resource.data.idPos.size() > 0
+
+            && exists(
+              /databases/$(database)/documents/pos/$(request.resource.data.idPos)
+            )
+
+            && request.resource.data.namaPos == get(
+              /databases/$(database)/documents/pos/$(request.resource.data.idPos)
+            ).data.nama
+          )
+        );
+    }
+
+    // ==============================
+    // HELPER: UPDATE
+    // ==============================
+
+    function changedOnly(allowed) {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys().hasOnly(allowed);
+    }
+
+    function updatedNow() {
+      return request.resource.data.diperbaruiPada
+        == request.time;
+    }
+
+    // Laporan hilang milik pengguna.
+    function updateHilang() {
+      return isPengguna()
+
+        && resource.data.tipe == 'hilang'
+
+        && resource.data.idPelapor
+            == request.auth.uid
+
+        && resource.data.status == 'aktif'
+
+        && request.resource.data.status
+            in ['aktif', 'selesai']
+
+        && changedOnly([
+          'nama',
+          'kategori',
+          'fakultas',
+          'tanggalKejadian',
+          'catatanTambahan',
+          'fotoUrl',
+          'status',
+          'diperbaruiPada'
+        ])
+
+        && validItemFields()
+
+        && updatedNow();
+    }
+
+    // Edit laporan temuan oleh satpam pos terkait.
+    function updateTemuan() {
+      return resource.data.tipe == 'ditemukan'
+
+        && resource.data.status == 'aktif'
+
+        && satpamFor(resource.data.idPos)
+
+        && request.resource.data.status == 'aktif'
+
+        && changedOnly([
+          'nama',
+          'kategori',
+          'fakultas',
+          'tanggalKejadian',
+          'catatanTambahan',
+          'fotoUrl',
+          'diperbaruiPada'
+        ])
+
+        && validItemFields()
+
+        && updatedNow();
+    }
+
+    // Serahkan barang ke pemilik oleh satpam.
+    function serahkanTemuan() {
+      return resource.data.tipe == 'ditemukan'
+
+        && resource.data.status == 'aktif'
+
+        && satpamFor(resource.data.idPos)
+
+        && request.resource.data.status == 'selesai'
+
+        && changedOnly([
+          'status',
+          'diserahkanKepada',
+          'diserahkanPada',
+          'diserahkanOleh',
+          'diperbaruiPada'
+        ])
+
+        && request.resource.data.diserahkanKepada
+            is string
+
+        && request.resource.data.diserahkanKepada.size()
+            >= 2
+
+        && request.resource.data.diserahkanKepada.size()
+            <= 120
+
+        && request.resource.data.diserahkanPada
+            == request.time
+
+        && request.resource.data.diserahkanOleh
+            == request.auth.uid
+
+        && updatedNow();
+    }
+
+    // ==============================
+    // COLLECTION: USERS
+    // ==============================
+
+    match /users/{uid} {
+
+      // Hanya pemilik yang boleh membaca profil.
+      allow get: if signedIn()
+        && request.auth.uid == uid;
+
+      // Tidak boleh membaca daftar seluruh akun.
+      allow list: if false;
+
+      // Registrasi hanya boleh membuat pengguna.
+      allow create: if signedIn()
+
+        && request.auth.uid == uid
+
+        && request.resource.data.keys().hasOnly([
+          'nama',
+          'email',
+          'role',
+          'createdAt'
+        ])
+
+        && request.resource.data.keys().hasAll([
+          'nama',
+          'email',
+          'role',
+          'createdAt'
+        ])
+
+        && request.resource.data.nama is string
+
+        && request.resource.data.nama.size() >= 2
+
+        && request.resource.data.nama.size() <= 120
+
+        && request.resource.data.email
+            == request.auth.token.email
+
+        && request.resource.data.role == 'pengguna'
+
+        && request.resource.data.createdAt
+            == request.time;
+
+      // Hanya nama sendiri yang boleh diedit.
+      // Role, idPos, email, createdAt terkunci.
+      allow update: if signedIn()
+
+        && request.auth.uid == uid
+
+        && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['nama'])
+
+        && request.resource.data.nama is string
+
+        && request.resource.data.nama.size() >= 2
+
+        && request.resource.data.nama.size() <= 120;
+
+      allow delete: if false;
+    }
+
+    // ==============================
+    // COLLECTION: POS
+    // ==============================
+
+    match /pos/{posId} {
+
+      // Data pos dapat dibaca semua user login.
+      allow read: if signedIn();
+
+      // Data master dikelola melalui console.
+      allow create, update, delete: if false;
+    }
+
+    // ==============================
+    // COLLECTION: ITEMS
+    // ==============================
+
+    match /items/{itemId} {
+
+      // Pengguna login boleh melihat laporan.
+      allow read: if signedIn();
+
+      // Hanya role pengguna membuat laporan.
+      allow create: if validNewItem();
+
+      // Update berdasarkan jenis dan kewenangan.
+      allow update: if updateHilang()
+        || updateTemuan()
+        || serahkanTemuan();
+
+      // Hapus laporan hilang milik pelapor
+      // atau temuan aktif oleh satpam pos terkait.
+      allow delete: if (
+        isPengguna()
+        && resource.data.tipe == 'hilang'
+        && resource.data.idPelapor
+            == request.auth.uid
+      ) || (
+        resource.data.tipe == 'ditemukan'
+        && resource.data.status == 'aktif'
+        && satpamFor(resource.data.idPos)
+      );
+    }
+  }
+}
