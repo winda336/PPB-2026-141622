@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import 'login_page.dart';
-import 'pengguna_home_page.dart';
+import '../features/navigation/main_navigation.dart';
 import 'satpam_dashboard_page.dart';
 
 class AuthGate extends StatelessWidget {
@@ -74,7 +74,7 @@ class AuthGate extends StatelessWidget {
             }
 
             if (data['role'] == 'pengguna') {
-              return const PenggunaHomePage();
+              return const MainNavigation();
             }
 
             return const _ProfileIssue(message: 'Role akun tidak dikenal.');
