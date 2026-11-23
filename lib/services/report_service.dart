@@ -55,25 +55,25 @@ class ReportService {
       throw ArgumentError('Laporan ditemukan wajib memilih pos titipan.');
     }
     final now = FieldValue.serverTimestamp();
-    final ref = await _db.collection('items').add({
+    final data = <String, dynamic>{
       'tipe': r.tipe,
       'nama': r.nama.trim(),
       'kategori': r.kategori,
       'fakultas': r.fakultas,
       'tanggalKejadian': Timestamp.fromDate(r.tanggalKejadian),
       'catatanTambahan': r.catatanTambahan.trim(),
-      'fotoUrl': null, // foto opsional: belum diimplementasi
-      'idPos': ditemukan ? r.pos!.id : null,
-      'namaPos': ditemukan ? r.pos!.nama : null,
+      'fotoUrl': '', // foto opsional: belum diimplementasi
       'status': AppConst.statusAktif,
-      'diserahkanKepada': null,
-      'diserahkanPada': null,
-      'diserahkanOleh': null,
       'idPelapor': r.idPelapor,
       'namaPelapor': r.namaPelapor,
       'createdAt': now,
       'diperbaruiPada': now,
-    });
+    };
+    if (ditemukan) {
+      data['idPos'] = r.pos!.id;
+      data['namaPos'] = r.pos!.nama;
+    }
+    final ref = await _db.collection('items').add(data);
     return ref.id;
   }
 }
