@@ -72,15 +72,15 @@ service cloud.firestore {
             is string
         && request.resource.data.catatanTambahan.size()
             <= 1000
-
+        
         && request.resource.data.fotoUrl is string
-        && request.resource.data.fotoUrl.size() <= 2048
+        && request.resource.data.fotoUrl.size() <= 500 * 1024
         && (
           request.resource.data.fotoUrl == ''
-          || request.resource.data.fotoUrl.matches(
-            'https://.*'
-          )
+          || request.resource.data.fotoUrl.matches('https://.*')
+          || request.resource.data.fotoUrl.matches('data:image/jpeg;base64,.*')
         )
+
 
         && request.resource.data.idPelapor is string
 
